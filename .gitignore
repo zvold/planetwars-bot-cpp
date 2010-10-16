@@ -1,2 +1,8 @@
 obj/
 bin/
+bot-cpp.layout
+bot-cpp.depend
+bot-cpp.cbp
+*.o
+bot-cpp
+*.swp

@@ -6,3 +6,8 @@ bot-cpp.cbp
 *.o
 bot-cpp
 *.swp
+debug/
+release/
+*.ncb
+*.suo
+bot-cpp.sln

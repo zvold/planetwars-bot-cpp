@@ -20,7 +20,7 @@ using std::cerr;
 Move * exact_attack(const Simulator &sim,
                     const target_t &target,
                     Race attacker,
-                    bool verbose = false);
+                    bool safe = true);
 
 // returns a move attacking target at target._turn or later, but as early as possible, or NULL
 Move * waiting_attack(const Simulator &sim,

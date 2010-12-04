@@ -20,17 +20,18 @@ bool is_not_defence(const target_t &t) {
 // returns total ships available if there were enough ships to attack, or 0 otherwise
 ships_t select_planets(vector<pair<plid_t, ships_t> > &sources, Race attacker,
                        const target_t &target,
-                       const Simulator &sim) {
+                       const Simulator &sim,
+                       bool safe) {
     ships_t ships_avail = 0;
     const vector<pair<plid_t, turn_t> > neighbors = sim.pmap()->neighbours(target._id);
     vector<pair<plid_t, turn_t> >::const_iterator i;
     for (i=neighbors.begin(); i<neighbors.end(); i++) {
         plid_t src_id = i->first;
         turn_t eta = i->second;
-        ships_t ships;
-        if (eta <= target._turn &&
-            (ships = sim.ships_avail(src_id, target._turn - eta, attacker)) != 0) {
-            sources.push_back(make_pair<plid_t, ships_t>(src_id, ships));
+        if (eta <= target._turn) {
+            ships_t ships = safe ? sim.ships_avail_safe(src_id, target._turn - eta, attacker) :
+                                   sim.ships_avail(src_id, target._turn - eta, attacker);
+            if (ships != 0) sources.push_back(make_pair<plid_t, ships_t>(src_id, ships));
             ships_avail += ships;
         }
         if (ships_avail >= target._ships)
@@ -42,10 +43,10 @@ ships_t select_planets(vector<pair<plid_t, ships_t> > &sources, Race attacker,
 Move * exact_attack(const Simulator &sim,
                     const target_t &target,
                     Race attacker,
-                    bool verbose) {
+                    bool safe) {
     vector<pair<plid_t, ships_t> > sources;
     sources.reserve(4);
-    ships_t ships_avail = select_planets(sources, attacker, target, sim);
+    ships_t ships_avail = select_planets(sources, attacker, target, sim, safe);
     if (ships_avail==0 || sources.empty()) return NULL;
 
     ships_t ships_sent = 0;
@@ -69,9 +70,6 @@ Move * exact_attack(const Simulator &sim,
         ships_sent += to_send;
     }
     assert(ships_sent == target._ships);
-    if (verbose)
-        cerr << "# " << target._id << " attacked with " << ships_sent
-             << " ships from " << sources.size() << " sources" << endl;
     return move;
 }
 
@@ -116,11 +114,10 @@ turn_t is_enough_ships(const vector<pair<plid_t, turn_t> > &sources, int16_t end
             if (eta > att_turn || eta > SRC_RADIUS) continue;
 
             turn_t dep_turn = att_turn - eta;
-            if (safe && sim.winning(attacker))
-                 ships = sim.ships_avail_safe(src_id, dep_turn, attacker);
+            if (safe) ships = sim.ships_avail_safe(src_id, dep_turn, attacker);
             else ships = sim.ships_avail(src_id, dep_turn, attacker);
             if (ships != 0) {
-                if (safe && eta < nearest_ally && sim.winning(attacker)) {
+                if (safe && eta < nearest_ally) {
                     nearest_ally = eta;
                     ships_needed = max((ships_t)(target_state._ships + 1),
                                        calc_ships_needed(sim, target, sources,
@@ -168,8 +165,7 @@ Move * waiting_attack(const Simulator &sim,
             turn_t dep_turn = min_attack_turn - eta;
             ships_t src_ships;
 
-            if (safe && sim.winning(attacker))
-                 src_ships = sim.ships_avail_safe(src_id, dep_turn, attacker);
+            if (safe) src_ships = sim.ships_avail_safe(src_id, dep_turn, attacker);
             else src_ships = sim.ships_avail(src_id, dep_turn, attacker);
 
             if (src_ships == 0) continue;
@@ -206,6 +202,7 @@ Move * create_move(Simulator &sim,
     unsigned int expands = 0;
 
     Move *move = new Move(existing); // move attacking all possible targets from given range
+    sim.clear_evacuation_marks();
 
     for (vector<target_t>::const_iterator i=begin; i<end; i++) {
         // re-simulate if new moves added
@@ -217,11 +214,15 @@ Move * create_move(Simulator &sim,
         Move *m;
         switch (i->_kind) {
             case attack:
-            case defence:
                 m = exact_attack(sim, *i, attacker);
                 break;
+            case defence:
+                m = exact_attack(sim, *i, attacker, false);
+                if (m == NULL) // defence is pointless, evacuate all ships if needed
+                    sim.mark_for_evacuation(i->_id, attacker);
+                break;
             case expand:
-                m = (expands++ > MAX_EXPANDS) ? NULL : waiting_attack(sim, *i, attacker, safe);
+                m = (expands++ > MAX_EXPANDS) ? NULL : waiting_attack(sim, *i, attacker, safe && sim.winning(attacker));
                 break;
             default:
                 m = NULL;
@@ -259,6 +260,26 @@ void remove_all_of_kind(vector<target_t> &targets, Race owner) {
                   targets.end());
 }
 
+void cutoff(vector<target_t> &targets, const simple_closeness &sorter) {
+    if (targets.size() < 3) return;
+    std::sort(targets.begin(), targets.end(), sorter);
+    assert(sorter.score(targets.front()._id) <= sorter.score(targets.back()._id));
+    double min = +1e+10;
+    double max = -1e+10;
+    vector<target_t>::iterator i;
+    for (i=targets.begin(); i<targets.end(); i++) {
+        double score = sorter.score(i->_id);
+        if (score > max) max = score;
+        if (score < min) min = score;
+    }
+    for (i=targets.begin(); i<targets.end(); i++) {
+        double score = sorter.score(i->_id);
+        if ((score - min) / (max - min) > EXP_CUTOFF)
+            break;
+    }
+    targets.erase(i, targets.end());
+}
+
 void shuffle_targets(const Simulator &sim,
                      const Move &existing,
                      vector<target_t> &targets,
@@ -288,22 +309,15 @@ void shuffle_targets(const Simulator &sim,
     if (attacker == ally)
         shuf_targets.push_back(make_pair<Move, vector<target_t> >(existing, vector<target_t>()));
 
-    // add neutral expands only, sorted by closeness
+    // prepare neutral expands
     vector<target_t> ex_neutral(end, targets.end());
     remove_all_of_kind(ex_neutral, ally);
     remove_all_of_kind(ex_neutral, enemy);
-    std::sort(ex_neutral.begin(), ex_neutral.end(), closeness_sorter);
-    ex_neutral.insert(ex_neutral.begin(), targets.begin(), end);
-    shuf_targets.push_back(make_pair<Move, vector<target_t> >(existing, ex_neutral));
 
-    // add enemy expands only, sorted by reverse closeness
+    // prepare enemy expands
     vector<target_t> ex_enemy(end, targets.end());
     remove_all_of_kind(ex_enemy, neutral);
     remove_all_of_kind(ex_enemy, attacker);
-    std::sort(ex_enemy.begin(), ex_enemy.end(), closeness_sorter);
-    std::reverse(ex_enemy.begin(), ex_enemy.end());
-    ex_enemy.insert(ex_enemy.begin(), targets.begin(), end);
-    shuf_targets.push_back(make_pair<Move, vector<target_t> >(existing, ex_enemy));
 
     if (attacker == enemy)
         for (uint16_t i=0; i<MAX_PERMS; i++) {
@@ -312,6 +326,29 @@ void shuffle_targets(const Simulator &sim,
             std::random_shuffle(ex_enemy.begin(), ex_enemy.end());
             shuf_targets.push_back(make_pair<Move, vector<target_t> >(existing, ex_enemy));
         }
+
+    simple_closeness distance_sorter(sim.game(), sim.pmap(), attacker);
+    // add neutral expands only, sorted by closeness
+    cutoff(ex_neutral, distance_sorter);
+    std::sort(ex_neutral.begin(), ex_neutral.end(), closeness_sorter);
+    ex_neutral.insert(ex_neutral.begin(), targets.begin(), end);
+    shuf_targets.push_back(make_pair<Move, vector<target_t> >(existing, ex_neutral));
+
+    // add enemy expands only, sorted by reverse closeness
+    cutoff(ex_enemy, distance_sorter);
+    std::sort(ex_enemy.begin(), ex_enemy.end(), closeness_sorter);
+    std::reverse(ex_enemy.begin(), ex_enemy.end());
+    ex_enemy.insert(ex_enemy.begin(), targets.begin(), end);
+    shuf_targets.push_back(make_pair<Move, vector<target_t> >(existing, ex_enemy));
+
+    vector<target_t> *added;
+    shuf_targets.push_back(make_pair<Move, vector<target_t> >(existing, ex_neutral));
+    added = &(shuf_targets.end() - 1)->second;
+    added->insert(added->begin(), ex_enemy.begin(), ex_enemy.end());
+
+    shuf_targets.push_back(make_pair<Move, vector<target_t> >(existing, ex_enemy));
+    added = &(shuf_targets.end() - 1)->second;
+    added->insert(added->begin(), ex_neutral.begin(), ex_neutral.end());
 }
 
 turn_t nearest_enemy(const Game &game, const PlanetMap &pmap, plid_t id) {
@@ -332,7 +369,6 @@ void reinforce(Simulator &sim,
         if (sim.game()->owner(id) == attacker) allies.push_back(id);
     simple_closeness enemy_closeness(sim.game(), sim.pmap(), opposite(attacker));
     std::sort(allies.begin(), allies.end(), enemy_closeness);
-    std::reverse(allies.begin(), allies.end());
 
     vector<Move *> reinforcing_moves;
     set<plid_t> visited;
@@ -377,5 +413,5 @@ unsigned int unique_orders(const vector<Move*> &moves) {
     for (j=moves.begin(); j<moves.end(); j++)
         for (k=(*j)->orders().begin(); k<(*j)->orders().end(); k++)
             orders.insert(*k);
-    return orders.size();
+    return (unsigned int)orders.size();
 }

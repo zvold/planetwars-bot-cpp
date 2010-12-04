@@ -80,7 +80,7 @@ bool Game::verify_planets() const {
 }
 
 plid_t Game::num_planets() const {
-    return _ships.size();
+    return (plid_t)_ships.size();
 }
 
 map<turn_t, vector<Fleet> > const * Game::fleets() const {

@@ -4,8 +4,12 @@
 #include "utils.h"
 
 #include <stdlib.h>
-#include <stdint.h>
+
+#ifdef WIN32
+#include "gettimeofday.h"
+#else
 #include <sys/time.h>
+#endif
 
 class Timer {
 private:

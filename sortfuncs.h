@@ -47,11 +47,11 @@ struct simple_closeness {
         _game(game), _map(map), _owner(owner) {}
 
     bool operator()(const target_t &t1, const target_t &t2) const {
-        return score(t1._id) > score(t2._id);
+        return score(t1._id) < score(t2._id);
     }
 
     bool operator()(plid_t p1, plid_t p2) const {
-        return score(p1) > score(p2);
+        return score(p1) < score(p2);
     }
 
     double score(plid_t id) const {

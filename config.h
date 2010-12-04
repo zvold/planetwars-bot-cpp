@@ -15,6 +15,7 @@
 #define TURN_LIMIT      cfg._turn_limit
 #define REINF_THRESH    cfg._reinf_thresh
 #define MAX_FUTURE      cfg._max_future
+#define EXP_CUTOFF      cfg._exp_cutoff
 
 using std::string;
 
@@ -32,6 +33,7 @@ public:
     uint16_t    _turn_limit;
     float       _reinf_thresh;
     uint16_t    _max_future;
+    float       _exp_cutoff;
 
     Config();
     void parse(string file);

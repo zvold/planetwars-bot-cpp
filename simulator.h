@@ -76,6 +76,7 @@ private:
     map<plid_t, vector<ships_t> >   _avail_safe[race_last];
     profile                         _end_profile;
     int32_t                         _score;
+    pmask_t                         _evacuation[race_last];
 
     void    init_available_ships(Race owner);
 
@@ -99,6 +100,10 @@ public:
           turn_t      turns() const {return _turns;}
     const profile   & end_profile() const {return _end_profile;}
           bool        winning(Race race) const;
+
+    void clear_evacuation_marks();
+    void mark_for_evacuation(plid_t id, Race owner);
+    bool marked_for_evacuation(plid_t id, Race owner) const;
 
 private:
     ships_t calc_safe_ships(plid_t id, Race owner, turn_t turn);

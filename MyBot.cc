@@ -88,7 +88,7 @@ void MyBot::do_turn() {
     // prepare pre-moves based on previous move and forced sneak defence commands
     vector<Move*> pre_moves;
     force_defence(_prev_move, pre_moves, ally);
-    uint16_t def_num = pre_moves.size();
+    uint16_t def_num = (uint16_t)pre_moves.size();
 
     reinforce(sim, pre_moves, ally);
     if (VERBOSE)
@@ -130,38 +130,24 @@ void MyBot::do_turn() {
 
         vector<pair<Move, vector<target_t> > >::iterator e;
         for (e=enemy_shuf_targets.begin(); e<enemy_shuf_targets.end() && !bailout; e++) {
-            num_variants++;
-            Move *e_move;
-            int32_t score;
+            for (int16_t flag=0; flag<=1 && !bailout; flag++) {
+                num_variants++;
+                bool safe = (flag == 1);
 
-            e_move = create_move(sim, *a_move, e->second.begin(), e->second.end(), enemy);
-            sim.simulate_safe(*e_move, SIM_DEPTH);
-            delete e_move;
+                Move *e_move = create_move(sim, *a_move, e->second.begin(), e->second.end(), enemy, safe);
+                if ((bailout = timeout()) == true) {delete e_move; break;}
 
-            score = sim.score(_turn);
-            // bail out early when possible
-            if (score < score_minmax.first) break;
+                sim.simulate_safe(*e_move, SIM_DEPTH);
+                delete e_move;
+                if ((bailout = timeout()) == true) break;
 
-            if (score < score_min_row.first) {
-                score_min_row.first = score;
-                score_min_row.second = sim.end_profile();
+                int32_t score = sim.score(_turn);
+                if (score < score_minmax.first) break;
+                if (score < score_min_row.first) {
+                    score_min_row.first = score;
+                    score_min_row.second = sim.end_profile();
+                }
             }
-            if ((bailout = timeout()) == true) break;
-
-            num_variants++;
-            e_move = create_move(sim, *a_move, e->second.begin(), e->second.end(), enemy, false);
-            sim.simulate_safe(*e_move, SIM_DEPTH);
-            delete e_move;
-
-            score = sim.score(_turn);
-            // bail out early when possible
-            if (score < score_minmax.first) break;
-
-            if (score < score_min_row.first) {
-                score_min_row.first = score;
-                score_min_row.second = sim.end_profile();
-            }
-            bailout = timeout();
         }
 
         if (score_min_row.first != 65535 && score_min_row.first >= score_minmax.first) {

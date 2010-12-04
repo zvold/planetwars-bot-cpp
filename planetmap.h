@@ -37,7 +37,7 @@ public:
     double   x(plid_t id) const;
     double   y(plid_t id) const;
 
-    plid_t num_planets() const {return _planets.size();}
+    plid_t num_planets() const {return (plid_t)_planets.size();}
 
     turn_t distance(plid_t p1, plid_t p2) const;
 

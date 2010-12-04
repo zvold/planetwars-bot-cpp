@@ -2,11 +2,18 @@
 #define UTILS_H
 
 #ifndef MY_DEBUG
+#ifndef NDEBUG
 #define NDEBUG
+#endif
 #endif
 
 #include <assert.h>
+
+#ifdef WIN32
+#include "pstdint.h"
+#else
 #include <stdint.h>
+#endif
 
 #include <string>
 #include <sstream>

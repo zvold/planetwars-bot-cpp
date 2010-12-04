@@ -62,9 +62,12 @@ void KSData::setFrom(KSData &from) {
     _item = -1;
 }
 
-vector<plid_t> FastExpand::knapsack(plid_t home, ships_t W, const vector<plid_t> &neutrals) {
-    const uint16_t num = neutrals.size();
-    KSData data[W+1][num+1];
+vector<plid_t> FastExpand::knapsack(plid_t home, const ships_t W, const vector<plid_t> &neutrals) {
+    const uint16_t num = (uint16_t)neutrals.size();
+    vector<vector<KSData> > data; // [W+1][num+1];
+    data.resize(W+1);
+    for (vector<vector<KSData> >::iterator i=data.begin(); i<data.end(); i++)
+      i->resize(num+1);
 
     growth_closeness sorter(_bot->game(), _bot->map(), neutral);
     KSData *maxData = &data[0][0];

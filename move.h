@@ -30,7 +30,7 @@ public:
     void add(const Move *move);
     const vector<FutureOrder> & orders() const;
 
-    uint16_t size() const {return _orders.size();}
+    uint16_t size() const {return (uint16_t)_orders.size();}
     bool empty() const {return _orders.empty();}
 
     vector<FutureOrder> & mod_orders() {return _orders;}

@@ -9,9 +9,9 @@ using std::endl;
 using std::cout;
 
 Config::Config() {
-    _max_expands = 5;
-    _max_permuts = 2;
-    _sim_depth   = 40;
+    _max_expands = 10;
+    _max_permuts = 1;
+    _sim_depth   = 30;
     _verbose     = false;
     _timeout     = 1000;
     _threshold   = 100;
@@ -21,6 +21,7 @@ Config::Config() {
     _turn_limit  = 200;
     _reinf_thresh= 1.25f;
     _max_future  = 18;
+    _exp_cutoff  = 0.5f;
 }
 
 void Config::parse(string file) {
@@ -62,6 +63,8 @@ void Config::parse_line(string line) {
         stream >> dummy >> _reinf_thresh;
     } else if (line.find("max_future", 0) == 0) {
         stream >> dummy >> _max_future;
+    } else if (line.find("exp_cutoff", 0) == 0) {
+        stream >> dummy >> _exp_cutoff;
     }
 }
 
@@ -74,6 +77,7 @@ std::ostream & operator<<(std::ostream &out, const Config &cfg) {
         << "# src_radius : " << cfg._src_radius << endl
         << "# reinf_thresh: " << cfg._reinf_thresh << endl
         << "# max_future : " << cfg._max_future << endl
+        << "# exp_cutoff : " << cfg._exp_cutoff << endl
         << "# turn_limit : " << cfg._turn_limit << endl
         << "# verbose    : " << (cfg._verbose ? "true" : "false") << endl
         << "# timeout    : " << cfg._timeout << endl

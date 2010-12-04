@@ -22,8 +22,26 @@ bool operator==(const target_t &t1, const target_t &t2) {
 
 Simulator::Simulator(Game const *game, PlanetMap const *map, turn_t turns) :
     _game(game), _map(map), _turns(turns) {
+    clear_evacuation_marks();
     _arriving.reserve(3);
     simulate(_turns, true);
+}
+
+void Simulator::clear_evacuation_marks() {
+    for (uint16_t i=0; i<race_last; i++)
+        _evacuation[i] = 0;
+}
+
+void Simulator::mark_for_evacuation(plid_t id, Race owner) {
+    assert(id < sizeof(pmask_t) * 8);
+    pmask_t mask = 1 << id;
+    _evacuation[owner] |= mask;
+}
+
+bool Simulator::marked_for_evacuation(plid_t id, Race owner) const {
+    assert(id < sizeof(pmask_t) * 8);
+    pmask_t mask = 1 << id;
+    return (_evacuation[owner] & mask) != 0;
 }
 
 bool cmp_fn(pair<Race, ships_t> p1, pair<Race, ships_t> p2) {
@@ -254,7 +272,7 @@ void Simulator::init_available_ships(Race owner) {
         for (i=_states[id].begin(); i<_states[id].end(); i++)
             _avail[owner][id].push_back(i->_owner == owner ? i->_ships : 0);
 
-        for (turn_t t=_avail[owner][id].size() - 1; t>0; t--)
+        for (turn_t t=(turn_t)_avail[owner][id].size() - 1; t>0; t--)
             _avail[owner][id][t-1] = min(_avail[owner][id][t], _avail[owner][id][t-1]);
     }
 }
@@ -268,7 +286,11 @@ void Simulator::init_safe_available_ships(Race owner) {
 ships_t Simulator::ships_avail_safe(plid_t id, turn_t turn, Race owner) const {
     assert(owner != neutral);
     assert(_avail_safe[owner].find(id) != _avail_safe[owner].end());
+    assert(_states.find(id) != _states.end());
     assert(true == (turn < _avail_safe[owner].find(id)->second.size()));
+    if (marked_for_evacuation(id, owner))
+        return _states.find(id)->second[turn]._owner == owner ?
+               _states.find(id)->second[turn]._ships : 0;
     return _avail_safe[owner].find(id)->second[turn];
 }
 

@@ -75,17 +75,40 @@ Move * exact_attack(const Simulator &sim,
     return move;
 }
 
+ships_t calc_ships_needed(const Simulator &sim,
+                          const target_t &target,
+                          const vector<pair<plid_t, turn_t> > &sources,
+                          turn_t ally_eta,
+                          turn_t attack_turn,
+                          Race defender) {
+    ships_t ret = sim.ships_avail(target._id, attack_turn, defender);
+    vector<pair<plid_t, turn_t> >::const_iterator src;
+    for (src=sources.begin(); src<sources.end(); src++) {
+        turn_t eta = src->second;
+        if (eta >= ally_eta) continue;
+        // attacker's fleet arrives at attack_turn, so we have eta turns for accumulating ships
+        turn_t dep_turn = attack_turn - eta + (target._owner == neutral ? 1 : 0);
+        ships_t ships_avail = sim.ships_avail(src->first, dep_turn, defender);
+        if (ships_avail != 0) ret += ships_avail;
+    }
+    return ret + 1;
+}
+
 turn_t is_enough_ships(const vector<pair<plid_t, turn_t> > &sources, int16_t end_src,
                        const Simulator &sim,
                        const target_t &target,
                        Race attacker,
-                       ships_t &ships_avail) {
-    for (turn_t att_turn=target._turn; att_turn<sim.turns(); att_turn++) {
+                       ships_t &ships_avail,
+                       ships_t &ships_needed,
+                       bool safe = true) {
+    assert(!sources.empty());
+    for (turn_t att_turn=sources[0].second; att_turn<sim.turns(); att_turn++) {
         plstate_t target_state = sim.planet_states(target._id)->at(att_turn);
-        //assert(target_state._owner != attacker);
         if (target_state._owner == attacker) continue;
 
+        turn_t  nearest_ally = -1;
         ships_avail = 0;
+        ships_needed = target_state._ships + 1;
         for (int16_t idx=0; idx<=end_src; idx++) {
             ships_t ships;
             plid_t src_id = sources[idx].first;
@@ -93,9 +116,18 @@ turn_t is_enough_ships(const vector<pair<plid_t, turn_t> > &sources, int16_t end
             if (eta > att_turn || eta > SRC_RADIUS) continue;
 
             turn_t dep_turn = att_turn - eta;
-            if ((ships = sim.ships_avail(src_id, dep_turn, attacker)) != 0) {
+            if (safe && sim.winning(attacker))
+                 ships = sim.ships_avail_safe(src_id, dep_turn, attacker);
+            else ships = sim.ships_avail(src_id, dep_turn, attacker);
+            if (ships != 0) {
+                if (safe && eta < nearest_ally && sim.winning(attacker)) {
+                    nearest_ally = eta;
+                    ships_needed = max((ships_t)(target_state._ships + 1),
+                                       calc_ships_needed(sim, target, sources,
+                                                         nearest_ally, att_turn, opposite(attacker)));
+                }
                 ships_avail += ships;
-                if (ships_avail >= target_state._ships + 1)
+                if (ships_avail >= ships_needed)
                     return att_turn;
             }
         }
@@ -106,16 +138,16 @@ turn_t is_enough_ships(const vector<pair<plid_t, turn_t> > &sources, int16_t end
 Move * waiting_attack(const Simulator &sim,
                       const target_t &target,
                       Race attacker,
-                      bool verbose) {
-    if (verbose)
-        cerr << "# waiting attack on planet " << target._id << endl;
+                      bool safe) {
     vector<pair<plid_t, turn_t> > sources = sim.pmap()->neighbours(target._id);
     turn_t min_attack_turn = -1;
     int16_t idx_end = -1;
     ships_t ships_avail = 0;
+    ships_t ships_needed = -1;
     if (!sources.empty()) {
         int16_t idx = (int16_t)sources.size() - 1;
-        turn_t enough_wait = is_enough_ships(sources, idx, sim, target, attacker, ships_avail);
+        turn_t enough_wait = is_enough_ships(sources, idx, sim, target, attacker,
+                                             ships_avail, ships_needed, safe);
         if (enough_wait < min_attack_turn) {
             min_attack_turn = enough_wait;
             idx_end = idx;
@@ -123,12 +155,7 @@ Move * waiting_attack(const Simulator &sim,
     }
     if (min_attack_turn != (turn_t)-1) {
         assert(idx_end != (turn_t)-1);
-        if (verbose)
-            cerr << "#\t enough ships (" << ships_avail << ") found, attack turn "
-                 << min_attack_turn << ", from " << (idx_end+1) << " sources" << endl;
-
         assert(ships_avail >= 0);
-        ships_t ships_needed = sim.planet_states(target._id)->at(min_attack_turn)._ships + 1;
 
         ships_t ships_sent = 0;
         double error = 0.0;
@@ -139,7 +166,11 @@ Move * waiting_attack(const Simulator &sim,
             if (eta > min_attack_turn || eta > SRC_RADIUS) continue;
 
             turn_t dep_turn = min_attack_turn - eta;
-            ships_t src_ships = sim.ships_avail(src_id, dep_turn, attacker);
+            ships_t src_ships;
+
+            if (safe && sim.winning(attacker))
+                 src_ships = sim.ships_avail_safe(src_id, dep_turn, attacker);
+            else src_ships = sim.ships_avail(src_id, dep_turn, attacker);
 
             if (src_ships == 0) continue;
             double frac = (double)ships_needed * (double)src_ships / (double)ships_avail;
@@ -160,9 +191,6 @@ Move * waiting_attack(const Simulator &sim,
                 break;
         }
         assert(ships_sent == ships_needed);
-        if (verbose)
-            cerr << "# planet " << target._id << " attacked with " << ships_sent
-                 << " ships from " << (idx_end+1) << " sources" << endl;
         return move;
     }
     return NULL;
@@ -172,7 +200,8 @@ Move * create_move(Simulator &sim,
                    const Move &existing,
                    const vector<target_t>::const_iterator &begin,
                    const vector<target_t>::const_iterator &end,
-                   Race attacker) {
+                   Race attacker,
+                   bool safe) {
     bool changed = true;
     unsigned int expands = 0;
 
@@ -192,7 +221,7 @@ Move * create_move(Simulator &sim,
                 m = exact_attack(sim, *i, attacker);
                 break;
             case expand:
-                m = (expands++ > MAX_EXPANDS) ? NULL : waiting_attack(sim, *i, attacker);
+                m = (expands++ > MAX_EXPANDS) ? NULL : waiting_attack(sim, *i, attacker, safe);
                 break;
             default:
                 m = NULL;
@@ -246,6 +275,14 @@ void shuffle_targets(const Simulator &sim,
     std::sort(targets.begin(), end, closeness_sorter);
     shuf_targets.push_back(make_pair<Move, vector<target_t> >
                                (existing, vector<target_t>(targets.begin(), end)));
+    if (attacker == enemy && end - targets.begin() > 2) {
+        for (uint16_t i=0; i<MAX_PERMS; i++) {
+            shuf_targets.push_back(make_pair<Move, vector<target_t> >
+                                   (existing, vector<target_t>(targets.begin(), end)));
+            vector<target_t> *added = &(shuf_targets.end() - 1)->second;
+            std::random_shuffle(added->begin(), added->end());
+        }
+    }
 
     // "do nothing" target
     if (attacker == ally)
@@ -267,6 +304,14 @@ void shuffle_targets(const Simulator &sim,
     std::reverse(ex_enemy.begin(), ex_enemy.end());
     ex_enemy.insert(ex_enemy.begin(), targets.begin(), end);
     shuf_targets.push_back(make_pair<Move, vector<target_t> >(existing, ex_enemy));
+
+    if (attacker == enemy)
+        for (uint16_t i=0; i<MAX_PERMS; i++) {
+            std::random_shuffle(ex_neutral.begin(), ex_neutral.end());
+            shuf_targets.push_back(make_pair<Move, vector<target_t> >(existing, ex_neutral));
+            std::random_shuffle(ex_enemy.begin(), ex_enemy.end());
+            shuf_targets.push_back(make_pair<Move, vector<target_t> >(existing, ex_enemy));
+        }
 }
 
 turn_t nearest_enemy(const Game &game, const PlanetMap &pmap, plid_t id) {

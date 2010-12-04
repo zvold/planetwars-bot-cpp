@@ -9,8 +9,8 @@ using std::endl;
 using std::cout;
 
 Config::Config() {
-    _max_expands = 10;
-    _max_permuts = 0;
+    _max_expands = 5;
+    _max_permuts = 2;
     _sim_depth   = 40;
     _verbose     = false;
     _timeout     = 1000;
@@ -20,7 +20,7 @@ Config::Config() {
     _src_radius  = 17;
     _turn_limit  = 200;
     _reinf_thresh= 1.25f;
-    _max_future  = 10;
+    _max_future  = 18;
 }
 
 void Config::parse(string file) {
@@ -69,6 +69,7 @@ std::ostream & operator<<(std::ostream &out, const Config &cfg) {
     out << "# max_expands: " << cfg._max_expands << endl
         << "# max_permuts: " << cfg._max_permuts << endl
         << "# sim_depth  : " << cfg._sim_depth << endl
+        << "# fallback   : " << cfg._fallback << endl
         << "# fast_expand: " << cfg._fast_expand << endl
         << "# src_radius : " << cfg._src_radius << endl
         << "# reinf_thresh: " << cfg._reinf_thresh << endl

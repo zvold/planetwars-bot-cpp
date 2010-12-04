@@ -42,6 +42,12 @@ void Simulator::resize_data(turn_t turns) {
 
         _avail [enemy][id].reserve(_turns);
         _avail [enemy][id].clear();
+
+        _avail_safe [ally] [id].reserve(_turns);
+        _avail_safe [ally] [id].clear();
+
+        _avail_safe [enemy][id].reserve(_turns);
+        _avail_safe [enemy][id].clear();
     }
     _end_profile._ships_diff = _end_profile._growth_diff = 0;
 }
@@ -141,6 +147,10 @@ bool Simulator::simulate(Move &move, turn_t turns, bool force_turns, bool saniti
     init_available_ships(enemy);
     assert(_avail[neutral].empty());
 
+    init_safe_available_ships(ally);
+    init_safe_available_ships(enemy);
+    assert(_avail[neutral].empty());
+
     if (sanitize)
         return move.sanitize();
     return false;
@@ -212,6 +222,31 @@ ships_t Simulator::orders_arrive(plid_t id, const Move &move, turn_t turn, Race 
     return ret;
 }
 
+bool Simulator::winning(Race race) const {
+    return race == ally ? (_score > 0) : (_score <= 0);
+}
+
+ships_t Simulator::calc_safe_ships(plid_t id, Race owner, turn_t turn) {
+    ships_t ret = _avail[owner][id][turn];
+    vector<pair<plid_t, turn_t> > neighbours = _map->neighbours(id);
+    turn_t min_eta = -1;
+    Race enemy_race = opposite(owner);
+    for (vector<pair<plid_t, turn_t> >::const_iterator i=neighbours.begin(); i<neighbours.end(); i++) {
+        if (_game->owner(i->first) != enemy_race) continue;
+        turn_t eta = i->second;
+        if (min_eta == (turn_t)-1)
+            min_eta = eta;
+        else
+            assert(eta >= min_eta);
+        if (eta == min_eta) {
+            ships_t ships = ships_avail(i->first, turn + 1, enemy_race);
+            if (ships >= ret) return 0;
+            ret -= ships;
+        }
+    }
+    return ret;
+}
+
 void Simulator::init_available_ships(Race owner) {
     for (plid_t id=0; id<_states.size(); id++) {
         assert(_states.find(id) != _states.end());
@@ -222,6 +257,19 @@ void Simulator::init_available_ships(Race owner) {
         for (turn_t t=_avail[owner][id].size() - 1; t>0; t--)
             _avail[owner][id][t-1] = min(_avail[owner][id][t], _avail[owner][id][t-1]);
     }
+}
+
+void Simulator::init_safe_available_ships(Race owner) {
+    for (plid_t id=0; id<_states.size(); id++)
+        for (uint16_t turn=0; turn<(turn_t)_avail[owner][id].size() - 1; turn++)
+            _avail_safe[owner] [id].push_back(calc_safe_ships(id, owner, turn));
+}
+
+ships_t Simulator::ships_avail_safe(plid_t id, turn_t turn, Race owner) const {
+    assert(owner != neutral);
+    assert(_avail_safe[owner].find(id) != _avail_safe[owner].end());
+    assert(true == (turn < _avail_safe[owner].find(id)->second.size()));
+    return _avail_safe[owner].find(id)->second[turn];
 }
 
 ships_t Simulator::ships_avail(plid_t id, turn_t turn, Race owner) const {
@@ -282,11 +330,19 @@ int32_t Simulator::score(turn_t turn) {
 
 void Simulator::dump_race(plid_t id, Race owner) const {
     map<plid_t, vector<ships_t> >::const_iterator j = _avail[owner].find(id);
+    vector<ships_t>::const_iterator i;
     assert(j != _avail[owner].end());
     cerr << "# " << name(owner) << " " << id << ":\t";
-    for (vector<ships_t>::const_iterator i=j->second.begin(); i<j->second.end(); i++)
+    for (i=j->second.begin(); i<j->second.end(); i++)
         cerr << *i << "\t";
     cerr << endl;
+
+    j = _avail_safe[owner].find(id);
+    cerr << "#s" << name(owner) << " " << id << ":\t";
+    for (i=j->second.begin(); i<j->second.end(); i++)
+        cerr << *i << "\t";
+    cerr << endl;
+
 }
 
 void Simulator::dump() const {

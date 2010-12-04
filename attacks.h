@@ -26,13 +26,14 @@ Move * exact_attack(const Simulator &sim,
 Move * waiting_attack(const Simulator &sim,
                       const target_t &target,
                       Race attacker,
-                      bool verbose = false);
+                      bool safe = true);
 
 Move * create_move(Simulator &sim,
                    const Move &existing,
                    const vector<target_t>::const_iterator &begin,
                    const vector<target_t>::const_iterator &end,
-                   Race attacker);
+                   Race attacker,
+                   bool safe = true);
 
 void shuffle_targets(const Simulator &sim,
                      const Move &existing,

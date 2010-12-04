@@ -130,13 +130,30 @@ void MyBot::do_turn() {
 
         vector<pair<Move, vector<target_t> > >::iterator e;
         for (e=enemy_shuf_targets.begin(); e<enemy_shuf_targets.end() && !bailout; e++) {
-            Move *e_move = create_move(sim, *a_move, e->second.begin(), e->second.end(), enemy);
+            num_variants++;
+            Move *e_move;
+            int32_t score;
+
+            e_move = create_move(sim, *a_move, e->second.begin(), e->second.end(), enemy);
             sim.simulate_safe(*e_move, SIM_DEPTH);
             delete e_move;
 
-            num_variants++;
+            score = sim.score(_turn);
+            // bail out early when possible
+            if (score < score_minmax.first) break;
 
-            int32_t score = sim.score(_turn);
+            if (score < score_min_row.first) {
+                score_min_row.first = score;
+                score_min_row.second = sim.end_profile();
+            }
+            if ((bailout = timeout()) == true) break;
+
+            num_variants++;
+            e_move = create_move(sim, *a_move, e->second.begin(), e->second.end(), enemy, false);
+            sim.simulate_safe(*e_move, SIM_DEPTH);
+            delete e_move;
+
+            score = sim.score(_turn);
             // bail out early when possible
             if (score < score_minmax.first) break;
 
@@ -165,6 +182,7 @@ void MyBot::do_turn() {
         }
         _prev_move.clear();
         issue_orders(best_move, _prev_move);
+        sim.set_score(score_minmax.first);
     } else
         log("no move selected");
 

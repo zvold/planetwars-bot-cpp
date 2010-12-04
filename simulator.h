@@ -73,7 +73,9 @@ private:
     turn_t                          _turns;
     map<plid_t, vector<plstate_t> > _states;
     map<plid_t, vector<ships_t> >   _avail[race_last]; // map for neutral is unused
+    map<plid_t, vector<ships_t> >   _avail_safe[race_last];
     profile                         _end_profile;
+    int32_t                         _score;
 
     void    init_available_ships(Race owner);
 
@@ -85,17 +87,22 @@ public:
     bool simulate(Move &move, turn_t turns, bool force_turns = false, bool sanitize = false);
 
     ships_t ships_avail(plid_t id, turn_t turn, Race owner) const;
+    ships_t ships_avail_safe(plid_t id, turn_t turn, Race owner) const;
 
     vector<plstate_t> const * planet_states(plid_t id) const;
     vector<target_t> select_targets(Race from) const;
     int32_t score(turn_t turn);
+    void    set_score(int32_t score) {_score = score;}
 
     const Game      * game() const {return _game;}
     const PlanetMap * pmap()  const {return _map;}
           turn_t      turns() const {return _turns;}
     const profile   & end_profile() const {return _end_profile;}
+          bool        winning(Race race) const;
 
 private:
+    ships_t calc_safe_ships(plid_t id, Race owner, turn_t turn);
+    void init_safe_available_ships(Race owner);
     turn_t  latest_arrival(const Move &move) const;
     ships_t end_in_flight(const Move &move, Race owner) const;
     void resize_data(turn_t turns);

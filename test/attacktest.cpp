@@ -87,7 +87,7 @@ TEST(AttackTest, WaitingAttack) {
     sim.simulate(15, true);
     vector<target_t> targets = sim.select_targets(ally);
 
-    move = waiting_attack(sim, targets[0], ally);
+    move = waiting_attack(sim, targets[0], ally, false);
     EXPECT_TRUE(move != NULL) << "waiting attack succeeds";
     vector<FutureOrder> orders = move->orders();
     EXPECT_TRUE(std::find(orders.begin(), orders.end(), FutureOrder(ally, 18, 1, 2, 4)) != orders.end())
@@ -96,7 +96,7 @@ TEST(AttackTest, WaitingAttack) {
         << "17:ally 0->2, at 3";
     delete move;
 
-    move = waiting_attack(sim, target_t(2, enemy, 37, 13, expand), ally);
+    move = waiting_attack(sim, target_t(2, enemy, 37, 13, expand), ally, false);
     EXPECT_TRUE(move != NULL) << "waiting attack succeeds";
     orders = move->orders();
     EXPECT_TRUE(std::find(orders.begin(), orders.end(), FutureOrder(ally, 19, 1, 2, 5)) != orders.end())

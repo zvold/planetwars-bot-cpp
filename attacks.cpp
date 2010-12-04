@@ -100,7 +100,8 @@ turn_t is_enough_ships(const vector<pair<plid_t, turn_t> > &sources, int16_t end
                        ships_t &ships_needed,
                        bool safe = true) {
     assert(!sources.empty());
-    for (turn_t att_turn=sources[0].second; att_turn<sim.turns(); att_turn++) {
+    for (turn_t att_turn=max(sources[0].second, target._turn);
+                att_turn<sim.turns(); att_turn++) {
         plstate_t target_state = sim.planet_states(target._id)->at(att_turn);
         if (target_state._owner == attacker) continue;
 
@@ -286,6 +287,7 @@ void shuffle_targets(const Simulator &sim,
                      vector<pair<Move, vector<target_t> > > &shuf_targets,
                      Race attacker) {
     field_closeness closeness_sorter(sim.game(), sim.pmap(), attacker);
+    simple_closeness distance_sorter(sim.game(), sim.pmap(), attacker);
     target_kind_comp kind_sorter(sim.game(), sim.pmap());
 
     // highest priority - attack/defence targets
@@ -313,42 +315,35 @@ void shuffle_targets(const Simulator &sim,
     vector<target_t> ex_neutral(end, targets.end());
     remove_all_of_kind(ex_neutral, ally);
     remove_all_of_kind(ex_neutral, enemy);
+    cutoff(ex_neutral, distance_sorter);
+    std::sort(ex_neutral.begin(), ex_neutral.end(), closeness_sorter);
 
     // prepare enemy expands
     vector<target_t> ex_enemy(end, targets.end());
     remove_all_of_kind(ex_enemy, neutral);
     remove_all_of_kind(ex_enemy, attacker);
-
-    if (attacker == enemy)
-        for (uint16_t i=0; i<MAX_PERMS; i++) {
-            std::random_shuffle(ex_neutral.begin(), ex_neutral.end());
-            shuf_targets.push_back(make_pair<Move, vector<target_t> >(existing, ex_neutral));
-            std::random_shuffle(ex_enemy.begin(), ex_enemy.end());
-            shuf_targets.push_back(make_pair<Move, vector<target_t> >(existing, ex_enemy));
-        }
-
-    simple_closeness distance_sorter(sim.game(), sim.pmap(), attacker);
-    // add neutral expands only, sorted by closeness
-    cutoff(ex_neutral, distance_sorter);
-    std::sort(ex_neutral.begin(), ex_neutral.end(), closeness_sorter);
-    ex_neutral.insert(ex_neutral.begin(), targets.begin(), end);
-    shuf_targets.push_back(make_pair<Move, vector<target_t> >(existing, ex_neutral));
-
-    // add enemy expands only, sorted by reverse closeness
     cutoff(ex_enemy, distance_sorter);
     std::sort(ex_enemy.begin(), ex_enemy.end(), closeness_sorter);
     std::reverse(ex_enemy.begin(), ex_enemy.end());
-    ex_enemy.insert(ex_enemy.begin(), targets.begin(), end);
-    shuf_targets.push_back(make_pair<Move, vector<target_t> >(existing, ex_enemy));
 
-    vector<target_t> *added;
+    // add neutral expands only, sorted by closeness
     shuf_targets.push_back(make_pair<Move, vector<target_t> >(existing, ex_neutral));
-    added = &(shuf_targets.end() - 1)->second;
-    added->insert(added->begin(), ex_enemy.begin(), ex_enemy.end());
-
+    // add enemy expands only, sorted by reverse closeness
     shuf_targets.push_back(make_pair<Move, vector<target_t> >(existing, ex_enemy));
-    added = &(shuf_targets.end() - 1)->second;
-    added->insert(added->begin(), ex_neutral.begin(), ex_neutral.end());
+
+    // enemy + neutral
+    shuf_targets.push_back(make_pair<Move, vector<target_t> >(existing, ex_neutral));
+    shuf_targets.back().second.insert(shuf_targets.back().second.begin(), ex_enemy.begin(), ex_enemy.end());
+    // neutral + enemy
+    shuf_targets.push_back(make_pair<Move, vector<target_t> >(existing, ex_enemy));
+    shuf_targets.back().second.insert(shuf_targets.back().second.begin(), ex_neutral.begin(), ex_neutral.end());
+
+    // attack/defence + neutral
+    shuf_targets.push_back(make_pair<Move, vector<target_t> >(existing, ex_neutral));
+    shuf_targets.back().second.insert(shuf_targets.back().second.begin(), targets.begin(), end);
+    // attack/defence + enemy
+    shuf_targets.push_back(make_pair<Move, vector<target_t> >(existing, ex_enemy));
+    shuf_targets.back().second.insert(shuf_targets.back().second.begin(), targets.begin(), end);
 }
 
 turn_t nearest_enemy(const Game &game, const PlanetMap &pmap, plid_t id) {

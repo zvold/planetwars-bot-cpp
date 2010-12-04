@@ -63,6 +63,12 @@ void dump(vector<Move*> const &moves) {
         cout << *i;
 }
 
+void dump(vector<FutureOrder> const * orders) {
+    for (vector<FutureOrder>::const_iterator i=orders->begin(); i<orders->end(); i++)
+        cout << i->to_string() << "; ";
+    cout << endl;
+}
+
 string name(TargetKind kind) {
     switch (kind) {
         case attack:  return "attack";

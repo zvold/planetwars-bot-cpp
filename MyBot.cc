@@ -114,12 +114,6 @@ void MyBot::do_turn() {
         score_min_row.first = 65535;
 
         Move *a_move = create_move(sim, a->first, a->second.begin(), a->second.end(), ally);
-
-//        if (a_move->empty()) {
-//            delete a_move;
-//            continue;
-//        }
-
         sim.simulate_safe(*a_move, SIM_DEPTH);
 
         targets = sim.select_targets(enemy);
